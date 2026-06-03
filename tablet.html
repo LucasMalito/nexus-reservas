@@ -121,6 +121,7 @@
 
   <!-- RESERVAS VIEW -->
   <div id="reservasView">
+    <div id="totalDia" style="padding:10px 16px;font-weight:700;background:var(--card);border-bottom:1px solid var(--line);"></div>
     <div class="occ" id="occ"></div>
     <div class="tabs" id="tabs"></div>
     <main id="list"></main>
@@ -336,7 +337,15 @@ function renderOcc(){
       <div class="bar"><i style="width:${pct}%;background:${col}"></i></div></div>`;
   }).join('') || '<div class="amb"><span class="n">Sem ambientes</span></div>';
 }
+const ORIGEM={whatsapp:['📱','WhatsApp'],instagram:['📷','Instagram'],site:['🌐','Site'],link_online:['🌐','Site'],painel:['🖥️','Painel'],telefone:['☎️','Telefone'],email:['✉️','E-mail']};
+function origemBadge(r){ const o=ORIGEM[r.origem]||['•',(r.origem||'—')]; return `<span class="tag">${o[0]} ${o[1]}</span>`; }
+function renderTotal(){
+  const ativas=reservas.filter(r=>r.status!=='cancelado'&&r.status!=='no_show');
+  const pax=ativas.reduce((s,r)=>s+(r.qtd_pessoas||0),0);
+  const el=document.getElementById('totalDia'); if(el) el.textContent=`📋 ${ativas.length} reserva(s) hoje · ${pax} pessoas`;
+}
 function renderList(){
+  renderTotal();
   const t=STATUS_TABS.find(x=>x.key===tabAtual);
   const arr=reservas.filter(r=>tabMatch(t,r));
   const el=document.getElementById('list');
@@ -352,6 +361,7 @@ function card(r){
     <div class="top">
       <span class="nome">${esc(r.nome)}</span>
       <span class="pill" style="background:${col}">${lbl}</span>
+      ${origemBadge(r)}
       ${r.passante?'<span class="tag">PASSANTE</span>':''}
       <span class="hora">${hora}</span>
     </div>
