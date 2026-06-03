@@ -114,6 +114,7 @@
       <button onclick="shiftDate(1)">›</button>
       <button class="today" onclick="goToday()">Hoje</button>
       <button class="icnbtn" onclick="loadData()" title="Atualizar">⟳</button>
+      <button class="icnbtn" id="btnFut" onclick="toggleFuturas()" title="Todas as próximas reservas">📅 Próximas</button>
       <button class="icnbtn" onclick="location.href='eventos.html'" title="Eventos">🎉 Eventos</button>
       <button class="icnbtn" onclick="openSetup()" title="Config">⚙</button>
     </div>
@@ -222,7 +223,7 @@
 // ===================== Estado =====================
 let sb=null, casas=[], casaAtual=null, ambientes=[], giros=[], dataSel=isoToday();
 let modo='reservas', reservas=[], convCount={}, fila=[], tabAtual='dia', filaTab='aguardando';
-let convReserva=null;
+let convReserva=null, vendoFuturas=false;
 
 const STATUS_TABS=[
   {key:'dia',      label:'Reservas do Dia', match:['pendente','confirmada']},
@@ -296,8 +297,10 @@ function loadData(){ modo==='reservas'?loadReservas():loadFila(); }
 // ===================== Datas =====================
 function isoToday(){ return ymd(new Date()); }
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-function shiftDate(n){ const d=new Date(dataSel+'T12:00:00'); d.setDate(d.getDate()+n); dataSel=ymd(d); refreshDateLabel(); loadData(); }
-function goToday(){ dataSel=isoToday(); refreshDateLabel(); loadData(); }
+function shiftDate(n){ vendoFuturas=false; atualizaBotaoFut(); const d=new Date(dataSel+'T12:00:00'); d.setDate(d.getDate()+n); dataSel=ymd(d); refreshDateLabel(); loadData(); }
+function goToday(){ vendoFuturas=false; atualizaBotaoFut(); dataSel=isoToday(); refreshDateLabel(); loadData(); }
+function toggleFuturas(){ vendoFuturas=!vendoFuturas; atualizaBotaoFut(); loadData(); }
+function atualizaBotaoFut(){ const b=document.getElementById('btnFut'); if(b) b.textContent=vendoFuturas?'📅 Ver por dia':'📅 Próximas'; }
 function refreshDateLabel(){
   const d=new Date(dataSel+'T12:00:00'); const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
   document.getElementById('dateLabel').textContent=`${dias[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -306,9 +309,10 @@ function refreshDateLabel(){
 // ===================== RESERVAS =====================
 async function loadReservas(){
   if(!casaAtual) return;
-  const {data,error}=await sb.from('reservas').select('*')
-    .eq('casa_id',casaAtual.id).eq('data',dataSel)
-    .order('hora',{ascending:true,nullsFirst:true}).order('created_at');
+  let q=sb.from('reservas').select('*').eq('casa_id',casaAtual.id);
+  if(vendoFuturas) q=q.gte('data',isoToday()).order('data',{ascending:true}).order('hora',{ascending:true,nullsFirst:true});
+  else q=q.eq('data',dataSel).order('hora',{ascending:true,nullsFirst:true}).order('created_at');
+  const {data,error}=await q;
   if(error){ alert('Erro ao ler reservas: '+error.message); return; }
   reservas=data||[];
   await loadConvidados();
@@ -328,6 +332,7 @@ function renderTabs(){
 function tabMatch(t,r){ return t.key==='passante' ? (r.passante && r.status!=='cancelado') : t.match.includes(r.status); }
 function setTab(k){ tabAtual=k; renderTabs(); renderList(); }
 function renderOcc(){
+  if(vendoFuturas){ document.getElementById('occ').innerHTML=''; return; }
   const ativas=reservas.filter(r=>['pendente','confirmada','checkin','concluido'].includes(r.status));
   document.getElementById('occ').innerHTML=ambientes.map(a=>{
     const pax=ativas.filter(r=>r.ambiente_id===a.id).reduce((s,r)=>s+(r.qtd_pessoas||0),0);
@@ -342,14 +347,24 @@ function origemBadge(r){ const o=ORIGEM[r.origem]||['•',(r.origem||'—')]; re
 function renderTotal(){
   const ativas=reservas.filter(r=>r.status!=='cancelado'&&r.status!=='no_show');
   const pax=ativas.reduce((s,r)=>s+(r.qtd_pessoas||0),0);
-  const el=document.getElementById('totalDia'); if(el) el.textContent=`📋 ${ativas.length} reserva(s) hoje · ${pax} pessoas`;
+  const el=document.getElementById('totalDia'); if(el) el.textContent= vendoFuturas?`📅 ${ativas.length} reserva(s) futuras · ${pax} pessoas`:`📋 ${ativas.length} reserva(s) hoje · ${pax} pessoas`;
 }
 function renderList(){
   renderTotal();
   const t=STATUS_TABS.find(x=>x.key===tabAtual);
   const arr=reservas.filter(r=>tabMatch(t,r));
   const el=document.getElementById('list');
-  if(!arr.length){ el.innerHTML=`<div class="empty">Nenhuma reserva em "${t.label}" neste dia.</div>`; return; }
+  if(!arr.length){ el.innerHTML=`<div class="empty">Nenhuma reserva em "${t.label}"${vendoFuturas?' nas próximas datas':' neste dia'}.</div>`; return; }
+  if(vendoFuturas){
+    const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'], grupos={};
+    arr.forEach(r=>{ (grupos[r.data]=grupos[r.data]||[]).push(r); });
+    el.innerHTML=Object.keys(grupos).sort().map(d=>{
+      const dt=new Date(d+'T12:00:00');
+      const hdr=`<div style="font-weight:800;font-size:17px;margin:18px 0 8px;color:var(--accent)">${dias[dt.getDay()]} ${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')} · ${grupos[d].length} reserva(s)</div>`;
+      return hdr+grupos[d].map(card).join('');
+    }).join('');
+    return;
+  }
   el.innerHTML=arr.map(card).join('');
 }
 function card(r){
