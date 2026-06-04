@@ -83,7 +83,8 @@ async function init(){
 }
 function renderMenu(){
   const cats={}; produtos.forEach(p=>{(cats[p.categoria||'Outros']=cats[p.categoria||'Outros']||[]).push(p);});
-  document.getElementById('menu').innerHTML=Object.keys(cats).map(cat=>
+  const promo=Number(cfg.desconto_pct||0)>0?`<div style="background:#16a34a;color:#fff;padding:12px;border-radius:12px;text-align:center;font-weight:700;margin-bottom:10px;">🎉 ${cfg.desconto_pct}% de desconto em todo o pedido!</div>`:'';
+  document.getElementById('menu').innerHTML=promo+Object.keys(cats).map(cat=>
     `<div class="cat">${esc(cat)}</div>`+cats[cat].map(p=>
       `<div class="prod"><div><div class="nome">${esc(p.nome)}</div><div class="desc">${esc(p.descricao||'')}</div><div class="preco">${brl(p.preco)}</div></div>
        <button class="add" onclick="addCart('${p.id}')">+</button></div>`).join('')).join('');
@@ -97,8 +98,8 @@ function renderCart(){
   let sub=0;
   ci.innerHTML=ids.map(id=>{const p=produtos.find(x=>x.id===id);const t=p.preco*cart[id];sub+=t;
     return `<div class="citem"><div>${esc(p.nome)}</div><div style="display:flex;gap:6px;align-items:center;"><span class="qtybtn" onclick="subCart('${id}')">−</span>${cart[id]}<span class="qtybtn" onclick="addCart('${id}')">+</span><b style="min-width:70px;text-align:right;">${brl(t)}</b></div></div>`;}).join('');
-  const taxa=Number(cfg.taxa_entrega||0);
-  document.getElementById('tot').innerHTML=`Subtotal: ${brl(sub)}<br><span class="muted" style="font-size:14px;">Entrega: ${brl(taxa)}</span><br>Total: <span class="ok">${brl(sub+taxa)}</span>`;
+  const taxa=Number(cfg.taxa_entrega||0), pct=Number(cfg.desconto_pct||0), desc=Math.round(sub*pct)/100;
+  document.getElementById('tot').innerHTML=`Subtotal: ${brl(sub)}<br>${pct>0?`<span style="font-size:14px;color:#16a34a;">🎉 Desconto ${pct}%: -${brl(desc)}</span><br>`:''}<span class="muted" style="font-size:14px;">Entrega: ${brl(taxa)}</span><br>Total: <span class="ok">${brl(sub-desc+taxa)}</span>`;
   document.getElementById('checkout').classList.remove('hidden');
 }
 async function enviarPedido(){
@@ -107,11 +108,11 @@ async function enviarPedido(){
   if(!nome||!tel||!end){ msg.innerHTML='<span style="color:#f87171">Preencha nome, WhatsApp e endereço.</span>'; return; }
   const ids=Object.keys(cart); if(!ids.length){ msg.textContent='Carrinho vazio.'; return; }
   const itens=ids.map(id=>{const p=produtos.find(x=>x.id===id);return {id,nome:p.nome,preco:p.preco,qtd:cart[id]};});
-  const subtotal=itens.reduce((s,i)=>s+i.preco*i.qtd,0), taxa=Number(cfg.taxa_entrega||0), total=subtotal+taxa;
+  const subtotal=itens.reduce((s,i)=>s+i.preco*i.qtd,0), taxa=Number(cfg.taxa_entrega||0), pct=Number(cfg.desconto_pct||0), desconto=Math.round(subtotal*pct)/100, total=subtotal-desconto+taxa;
   const pag=document.getElementById('c_pag').value;
   document.getElementById('btnSend').disabled=true; msg.textContent='Enviando...';
   const ins=await sb.from('delivery_pedidos').insert({casa_id:casa.id, cliente_nome:nome, cliente_telefone:tel.replace(/\D/g,''),
-    endereco:end, complemento:document.getElementById('c_comp').value||null, itens, subtotal, taxa, total,
+    endereco:end, complemento:document.getElementById('c_comp').value||null, itens, subtotal, desconto, taxa, total,
     pagamento:pag, obs:document.getElementById('c_obs').value||null, status:'novo'}).select('id').single();
   if(ins.error){ msg.innerHTML='<span style="color:#f87171">Erro: '+esc(ins.error.message)+'</span>'; document.getElementById('btnSend').disabled=false; return; }
   if(pag==='online'){
