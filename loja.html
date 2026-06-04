@@ -115,7 +115,13 @@ async function enviarPedido(){
     pagamento:pag, obs:document.getElementById('c_obs').value||null, status:'novo'}).select('id').single();
   if(ins.error){ msg.innerHTML='<span style="color:#f87171">Erro: '+esc(ins.error.message)+'</span>'; document.getElementById('btnSend').disabled=false; return; }
   if(pag==='online'){
-    msg.innerHTML='✅ Pedido registrado! <b>Pagamento online (PagBank) será ativado em breve.</b> Por enquanto a casa confirma o pagamento com você pelo WhatsApp.';
+    msg.textContent='Gerando o pagamento...';
+    try{
+      const r=await fetch(SB_URL+'/functions/v1/pagbank',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'criar',pedido_id:ins.data.id})});
+      const d=await r.json();
+      if(d&&d.link){ cart={}; window.location.href=d.link; return; }
+      msg.innerHTML='✅ Pedido criado, mas não consegui gerar o pagamento agora. A casa confirma com você pelo WhatsApp.';
+    }catch(e){ msg.innerHTML='✅ Pedido criado. Tive um erro ao gerar o pagamento — a casa confirma pelo WhatsApp.'; }
   } else {
     msg.innerHTML='✅ <b>Pedido enviado!</b> A cozinha já recebeu. Você paga na entrega. Acompanhe pelo WhatsApp 🙂';
   }
